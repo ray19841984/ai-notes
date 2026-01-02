@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI 創作助手 (V15.0 精算版)</title>
+    
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#ffffff">
+    <link rel="icon" type="image/png" href="https://github.githubassets.com/favicons/favicon.png">
+    <link rel="apple-touch-icon" href="https://github.githubassets.com/favicons/favicon.png">
+    <link id="manifest-link" rel="manifest" href="">
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --chat-bg: #ffffff;
+            --primary-color: #007bff;
+            --user-msg-bg: #007bff;
+            --user-msg-text: #ffffff;
+            --ai-msg-bg: #f8f9fa;
+            --ai-msg-text: #333333;
+            --border-color: #e5e5e5;
+            --info-text: #6c757d;
+        }
+
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: var(--bg-color); display: flex; justify-content: center; height: 100vh; overflow: hidden; }
+        .main-container { width: 100%; max-width: 900px; background: var(--chat-bg); display: flex; flex-direction: column; box-shadow: 0 0 20px rgba(0,0,0,0.05); height: 100%; }
+        
+        /* Header */
+        .header { padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: #fff; z-index: 10; }
+        .header-left h1 { margin: 0; font-size: 1.1rem; color: #333; font-weight: 600; }
+        .header-actions { display: flex; gap: 8px; }
+        .btn { background: white; border: 1px solid #ddd; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; color: #555; display: flex; align-items: center; gap: 4px;}
+        .btn:hover { background: #f5f5f5; border-color: #ccc; }
+        .btn-reset { font-size: 0.7rem; color: #adb5bd; border: none; background: none; padding: 2px 5px; margin-left: 5px;}
+        .btn-load { border-color: #28a745; color: #28a745; }
+        .btn-save-all { border-color: #6610f2; color: #6610f2; }
+
+        /* Chat Area */
+        #chat-box { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
+        .message-container { display: flex; flex-direction: column; gap: 4px; max-width: 85%; }
+        .message-container.user { align-self: flex-end; align-items: flex-end; }
+        .message-container.ai { align-self: flex-start; align-items: flex-start; }
+        .message-container.system { align-self: center; max-width: 95%; }
+
+        .message { padding: 12px 16px; border-radius: 12px; line-height: 1.6; word-wrap: break-word; font-size: 0.95rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .message.user { background-color: var(--user-msg-bg); color: var(--user-msg-text); border-bottom-right-radius: 2px; }
+        .message.ai { background-color: var(--ai-msg-bg); color: var(--ai-msg-text); border: 1px solid #eee; border-bottom-left-radius: 2px; }
+        .message.system { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; font-size: 0.85rem; padding: 8px 15px; border-radius: 20px; text-align: center; }
+
+        .message pre { background: #2b2b2b; color: #f8f8f2; padding: 12px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }
+        
+        .msg-actions { display: flex; gap: 5px; margin-top: 4px; opacity: 0.6; transition: opacity 0.2s; }
+        .message-container:hover .msg-actions { opacity: 1; }
+        .action-btn { font-size: 0.75rem; border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 2px 8px; cursor: pointer; background: #f8f9fa; color: #555; }
+        .btn-del-msg { color: #dc3545; }
+
+        /* Cost Estimator Bar */
+        #cost-estimator {
+            background: #f8f9fa; border-top: 1px solid var(--border-color);
+            padding: 4px 20px; font-size: 0.75rem; color: var(--info-text);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .cost-highlight { font-weight: bold; color: #28a745; }
+
+        /* Input Area */
+        .input-area-wrapper { padding: 10px 20px 20px 20px; background: #fff; position: relative; }
+        .input-controls { display: flex; align-items: center; margin-bottom: 8px; justify-content: space-between; }
+        
+        #quick-model-btn { display: flex; align-items: center; gap: 6px; background: #f8f9fa; border: 1px solid #e9ecef; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 500; color: #495057; cursor: pointer; }
+        .provider-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .dot-google { background: #fd7e14; }
+        .dot-zhipu { background: #007bff; }
+        .dot-claude { background: #d946ef; }
+        .dot-universal { background: #20c997; }
+
+        .input-box-container { display: flex; gap: 10px; align-items: flex-end; }
+        textarea { flex: 1; padding: 12px; border-radius: 12px; border: 1px solid #ddd; resize: none; height: 50px; font-size: 1rem; outline: none; transition: border 0.2s; font-family: inherit; }
+        textarea:focus { border-color: var(--primary-color); }
+        button#send-btn { height: 46px; padding: 0 20px; background-color: var(--primary-color); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+        button#send-btn:disabled { background-color: #ccc; }
+
+        /* Quick Menu & Modals */
+        #quick-model-menu { display: none; position: absolute; bottom: 90px; left: 20px; background: white; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); width: 260px; max-height: 350px; overflow-y: auto; z-index: 100; padding: 5px; }
+        .quick-menu-item { padding: 8px 12px; font-size: 0.9rem; color: #333; cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 8px; }
+        .quick-menu-item:hover { background: #f1f3f5; }
+        .quick-menu-item.active { background: #e7f5ff; color: #007bff; font-weight: bold; }
+        .quick-menu-header { font-size: 0.75rem; color: #888; padding: 5px 10px; margin-top: 5px; font-weight: bold; border-top: 1px solid #eee; }
+
+        #settings-modal, #file-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }
+        .modal-content { background: white; padding: 25px; border-radius: 16px; width: 90%; max-width: 480px; max-height: 85vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        .file-list { max-height: 300px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; margin: 15px 0; }
+        .file-item { padding: 10px; border-bottom: 1px solid #eee; display: flex; align-items: center; cursor: pointer; }
+        .section-title { font-size: 0.95rem; font-weight: 700; color: #495057; margin: 20px 0 10px 0; border-bottom: 2px solid #f1f3f5; padding-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .form-group { margin-bottom: 15px; }
+        .form-group input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem; }
+        .modal-footer { text-align: right; margin-top: 25px; display: flex; justify-content: flex-end; gap: 10px; }
+        .save-btn { background: #28a745; color: white; border: none; padding: 8px 20px; border-radius: 8px; cursor: pointer; font-weight: 500; }
+        .close-btn { background: #e9ecef; color: #495057; border: none; padding: 8px 15px; border-radius: 8px; cursor: pointer; }
+        .backup-btn { background: #17a2b8; color: white; border: none; padding: 5px 12px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; }
+        .typing-indicator { font-style: italic; color: #adb5bd; font-size: 0.85rem; margin-bottom: 10px; display: none; padding-left: 20px; }
+        .custom-model-list { background: #f8f9fa; border: 1px solid #eee; border-radius: 8px; padding: 5px; max-height: 120px; overflow-y: auto; }
+        .custom-model-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+        .btn-del-model { color: #dc3545; background: none; border: none; cursor: pointer; padding: 2px 6px; }
+
+        /* Media Query for Mobile */
+        @media (max-width: 600px) {
+            .header-left h1 { font-size: 1rem; }
+            .btn span { display: none; } /* 手機版隱藏按鈕文字只留 icon */
+            .header { padding: 10px 15px; }
+            .btn { padding: 6px 8px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <div class="header">
+            <div class="header-left">
+                <h1>AI 創作助手 <button class="btn-reset" onclick="hardReset()">↺</button></h1>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-save-all" onclick="saveAllToGitHub()" title="儲存全部">💾 <span>全存</span></button>
+                <button class="btn btn-load" onclick="openFileBrowser()" title="載入章節">📂 <span>載入</span></button>
+                <button class="btn" onclick="clearHistory()" title="清空">🗑️ <span>清空</span></button>
+                <button class="btn" onclick="openSettings()" title="設定">⚙️ <span>設定</span></button>
+            </div>
+        </div>
+
+        <div id="chat-box"></div>
+        <div class="typing-indicator" id="loading-indicator">AI 正在思考中...</div>
+
+        <div id="cost-estimator">
+            <span id="token-count">Tokens: 0</span>
+            <span id="cost-est">預估費用: $0.00000</span>
+        </div>
+
+        <div class="input-area-wrapper">
+            <div class="input-controls">
+                <div id="quick-model-btn" onclick="toggleQuickMenu()">
+                    <span id="quick-model-dot" class="provider-dot dot-google"></span>
+                    <span id="quick-model-name">載入中...</span>
+                    <span style="font-size: 0.7em; color: #999;">▼</span>
+                </div>
+            </div>
+
+            <div id="quick-model-menu"></div>
+
+            <div class="input-box-container">
+                <textarea id="user-input" placeholder="輸入訊息..." rows="1" oninput="updateCostEstimate()" onkeydown="if(event.keyCode===13 && !event.shiftKey){event.preventDefault(); sendMessage();}"></textarea>
+                <button id="send-btn" onclick="sendMessage()">發送</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-modal">
+        <div class="modal-content">
+            <h2>⚙️ 系統設定</h2>
+            
+            <div class="section-title">🔐 設定備份 (AES加密)<div style="display:inline-block"><button class="backup-btn" onclick="exportSettings()">匯出</button> <button class="backup-btn" onclick="document.getElementById('import-file').click()">匯入</button></div></div>
+            <input type="file" id="import-file" style="display:none" onchange="importSettings(this)">
+
+            <div class="section-title">📝 自訂模型</div>
+            <div class="form-group">
+                <div id="custom-model-list-container" class="custom-model-list"></div>
+                <div style="margin-top: 10px; display: flex; gap: 5px;"><input type="text" id="new-custom-model" placeholder="ID (如 grok-beta)"><button class="btn" onclick="addCustomModel()">+</button></div>
+            </div>
+
+            <div class="section-title">🔵 Gemini API <button class="btn-reset" onclick="checkGoogleModels()">檢測</button></div>
+            <div class="form-group"><input type="password" id="google-key-input" placeholder="Google API Key"><div id="model-list-result" style="display:none;font-size:0.8rem;background:#eee;padding:5px;"></div></div>
+
+            <div class="section-title">🟣 Claude API</div>
+            <div class="form-group"><input type="password" id="claude-key-input" placeholder="sk-ant-..."></div>
+
+            <div class="section-title">🔴 智譜 GLM</div>
+            <div class="form-group"><input type="password" id="zhipu-key-input" placeholder="API Key"></div>
+
+            <div class="section-title">🟢 萬用接口</div>
+            <div class="form-group"><input type="text" id="universal-url" placeholder="Base URL"><input type="password" id="universal-key" placeholder="API Key" style="margin-top:5px;"></div>
+
+            <div class="section-title">🐙 GitHub</div>
+            <div class="form-group"><input type="password" id="github-token" placeholder="Token"><div style="display:flex;gap:5px;margin-top:5px;"><input type="text" id="github-user" placeholder="User"><input type="text" id="github-repo" placeholder="Repo"></div></div>
+
+            <div class="modal-footer"><button class="close-btn" onclick="closeSettings()">取消</button><button class="save-btn" onclick="saveSettings()">儲存</button></div>
+        </div>
+    </div>
+
+    <div id="file-modal">
+        <div class="modal-content">
+            <h2>📂 選擇章節</h2>
+            <div id="repo-file-list" class="file-list">載入中...</div>
+            <div class="modal-footer"><button class="close-btn" onclick="closeFileBrowser()">取消</button><button class="save-btn" onclick="loadSelectedFiles()">載入</button></div>
+        </div>
+    </div>
+
+    <script>
+        // --- PWA Manifest 生成 ---
+        const manifest = {
+            "name": "AI 創作助手", "short_name": "AI筆記", "start_url": ".", "display": "standalone",
+            "background_color": "#ffffff", "theme_color": "#007bff",
+            "icons": [{ "src": "https://github.githubassets.com/favicons/favicon.png", "sizes": "192x192", "type": "image/png" }]
+        };
+        document.getElementById('manifest-link').href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], {type: 'application/json'}));
+
+        // --- 核心變數與定價表 (每百萬 Token 輸入價格 USD) ---
+        const pricing = {
+            'gemini-1.5-flash': 0.075,
+            'gemini-1.5-pro': 3.50,
+            'gemini-2.0-flash-exp': 0, // 目前免費
+            'claude-3-5-sonnet-20241022': 3.00,
+            'claude-3-5-haiku-20241022': 0.25,
+            'glm-4-plus': 1.40, // 約 10 RMB
+            'grok-beta': 5.00, // 估計值
+            'default': 5.00
+        };
+
+        const defaultModels = [
+            { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'google' },
+            { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'google' },
+            { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Exp)', provider: 'google' },
+            { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'claude' },
+            { id: 'glm-4-plus', name: 'GLM-4 Plus', provider: 'zhipu' },
+            { id: 'grok-beta', name: 'xAI Grok Beta', provider: 'universal' }
+        ];
+
+        let history = []; 
+        const chatBox = document.getElementById('chat-box');
+        const userInput = document.getElementById('user-input');
+
+        window.onload = function() {
+            try { loadSettings(); loadChatHistory(); renderQuickMenu(); renderCustomModelList(); updateCostEstimate(); } catch (e) { console.error(e); }
+            document.addEventListener('click', function(e) {
+                if (!document.getElementById('quick-model-btn').contains(e.target) && !document.getElementById('quick-model-menu').contains(e.target)) {
+                    document.getElementById('quick-model-menu').style.display = 'none';
+                }
+            });
+        };
+
+        // --- 費用估算邏輯 ---
+        function updateCostEstimate() {
+            const currentModel = localStorage.getItem('selected_model') || 'gemini-1.5-flash';
+            const pricePerMillion = pricing[currentModel] !== undefined ? pricing[currentModel] : pricing['default'];
+            
+            // 計算 History Tokens (粗略估計: 1 char = 1 token for safe buffer)
+            let historyChars = history.reduce((acc, msg) => acc + msg.content.length, 0);
+            let inputChars = userInput.value.length;
+            let totalChars = historyChars + inputChars;
+            
+            // 系統提示詞估算 (假設 500 chars)
+            let systemBuffer = 500;
+            let totalEstTokens = totalChars + systemBuffer;
+
+            // 計算費用
+            let cost = (totalEstTokens / 1000000) * pricePerMillion;
+
+            document.getElementById('token-count').textContent = `Tokens: ~${totalEstTokens}`;
+            const costElem = document.getElementById('cost-est');
+            costElem.textContent = `預估費用: $${cost.toFixed(5)}`;
+            
+            if(cost > 0.01) costElem.classList.add('cost-highlight'); // 費用高時變綠色提醒
+            else costElem.classList.remove('cost-highlight');
+        }
+
+        // --- 設定管理 (含 AES) ---
+        function loadSettings() {
+            const get = (k) => localStorage.getItem(k) || '';
+            document.getElementById('zhipu-key-input').value = get('zhipu_api_key');
+            document.getElementById('google-key-input').value = get('google_api_key');
+            document.getElementById('claude-key-input').value = get('claude_api_key');
+            document.getElementById('universal-url').value = get('universal_url');
+            document.getElementById('universal-key').value = get('universal_key');
+            document.getElementById('github-token').value = get('github_token');
+            document.getElementById('github-user').value = get('github_user');
+            document.getElementById('github-repo').value = get('github_repo');
+            updateQuickBtnUI(localStorage.getItem('selected_model') || 'gemini-1.5-flash');
+        }
+
+        function saveSettings() {
+            const set = (k, id) => localStorage.setItem(k, document.getElementById(id).value.trim());
+            set('zhipu_api_key', 'zhipu-key-input'); set('google_api_key', 'google-key-input');
+            set('claude_api_key', 'claude-key-input'); set('universal_url', 'universal-url');
+            set('universal_key', 'universal-key'); set('github_token', 'github-token');
+            set('github_user', 'github-user'); set('github_repo', 'github-repo');
+            renderQuickMenu(); renderCustomModelList(); closeSettings();
+        }
+
+        function exportSettings() {
+            const pwd = prompt("設定加密密碼："); if(!pwd) return;
+            const data = {
+                zhipu: localStorage.getItem('zhipu_api_key'), google: localStorage.getItem('google_api_key'),
+                claude: localStorage.getItem('claude_api_key'), univ_url: localStorage.getItem('universal_url'),
+                univ_key: localStorage.getItem('universal_key'), gh_token: localStorage.getItem('github_token'),
+                gh_user: localStorage.getItem('github_user'), gh_repo: localStorage.getItem('github_repo'),
+                custom: localStorage.getItem('custom_models')
+            };
+            const enc = CryptoJS.AES.encrypt(JSON.stringify(data), pwd).toString();
+            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([enc], {type:"text/plain"}));
+            a.download = `ai-config-${new Date().toISOString().slice(0,10)}.backup`; a.click();
+        }
+
+        function importSettings(input) {
+            const file = input.files[0]; if(!file) return;
+            const r = new FileReader();
+            r.onload = function(e) {
+                const pwd = prompt("輸入解密密碼："); if(!pwd) return;
+                try {
+                    const dec = JSON.parse(CryptoJS.AES.decrypt(e.target.result, pwd).toString(CryptoJS.enc.Utf8));
+                    if(dec.google!==undefined) {
+                        localStorage.setItem('zhipu_api_key', dec.zhipu||''); localStorage.setItem('google_api_key', dec.google||'');
+                        localStorage.setItem('claude_api_key', dec.claude||''); localStorage.setItem('universal_url', dec.univ_url||'');
+                        localStorage.setItem('universal_key', dec.univ_key||''); localStorage.setItem('github_token', dec.gh_token||'');
+                        localStorage.setItem('github_user', dec.gh_user||''); localStorage.setItem('github_repo', dec.gh_repo||'');
+                        localStorage.setItem('custom_models', dec.custom||'[]'); alert("✅ 還原成功"); location.reload();
+                    }
+                } catch(err) { alert("❌ 密碼錯誤"); }
+            }; r.readAsText(file); input.value = '';
+        }
+
+        // --- UI 操作 ---
+        function getProvider(id) {
+            if (id.includes('gemini')) return 'google'; if (id.includes('claude')) return 'claude';
+            if (id.startsWith('glm')) return 'zhipu'; return 'universal';
+        }
+        function toggleQuickMenu() { const m = document.getElementById('quick-model-menu'); m.style.display = m.style.display==='block'?'none':'block'; }
+        function selectModel(id) { localStorage.setItem('selected_model', id); updateQuickBtnUI(id); document.getElementById('quick-model-menu').style.display='none'; renderQuickMenu(); updateCostEstimate(); }
+        function updateQuickBtnUI(id) {
+            const m = defaultModels.find(x=>x.id===id); const name = m?m.name:id; const p = getProvider(id);
+            document.getElementById('quick-model-name').textContent = name;
+            document.getElementById('quick-model-dot').className = `provider-dot dot-${p}`;
+        }
+        function renderQuickMenu() {
+            const curr = localStorage.getItem('selected_model'); const cus = JSON.parse(localStorage.getItem('custom_models')||'[]');
+            const menu = document.getElementById('quick-model-menu'); menu.innerHTML = '';
+            const add = (t, lst) => {
+                if(!lst.length)return; const h=document.createElement('div');h.className='quick-menu-header';h.textContent=t;menu.appendChild(h);
+                lst.forEach(m=>{
+                    const d=document.createElement('div');d.className=`quick-menu-item ${m.id===curr?'active':''}`;
+                    d.innerHTML=`<span class="provider-dot dot-${m.provider}"></span> ${m.name}`;
+                    d.onclick=()=>{selectModel(m.id)};menu.appendChild(d);
+                });
+            };
+            add('Google', defaultModels.filter(m=>m.provider==='google'));
+            add('Claude', defaultModels.filter(m=>m.provider==='claude'));
+            add('Zhipu', defaultModels.filter(m=>m.provider==='zhipu'));
+            const u = defaultModels.filter(m=>m.provider==='universal').concat(cus.map(id=>({id:id,name:id,provider:getProvider(id)})));
+            add('自訂/萬用', u);
+        }
+
+        // --- 聊天與 GitHub ---
+        async function sendMessage() {
+            const text = userInput.value.trim(); if(!text) return;
+            const model = localStorage.getItem('selected_model') || 'gemini-1.5-flash';
+            const provider = getProvider(model);
+            let key, url;
+            
+            if(provider==='google') key=localStorage.getItem('google_api_key');
+            else if(provider==='claude') key=localStorage.getItem('claude_api_key');
+            else if(provider==='zhipu') key=localStorage.getItem('zhipu_api_key');
+            else { key=localStorage.getItem('universal_key'); url=localStorage.getItem('universal_url'); }
+
+            if(!key && provider!=='universal') { alert("請設定 API Key"); openSettings(); return; }
+
+            appendMessage('user', text, history.length);
+            history.push({ role: 'user', content: text }); saveHistory();
+            userInput.value = ''; updateCostEstimate();
+
+            document.getElementById('loading-indicator').style.display = 'block';
+            document.getElementById('send-btn').disabled = true;
+
+            try {
+                let reply;
+                if(provider==='google') {
+                    const contents = history.map(m => ({ role: m.role==='assistant'?'model':'user', parts: [{ text: m.content }] }));
+                    const safety = [{category:"HARM_CATEGORY_HARASSMENT",threshold:"BLOCK_NONE"},{category:"HARM_CATEGORY_HATE_SPEECH",threshold:"BLOCK_NONE"},{category:"HARM_CATEGORY_SEXUALLY_EXPLICIT",threshold:"BLOCK_NONE"},{category:"HARM_CATEGORY_DANGEROUS_CONTENT",threshold:"BLOCK_NONE"}];
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+                        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ contents: contents, safetySettings: safety })
+                    });
+                    if(!res.ok) throw new Error((await res.json()).error?.message||res.status);
+                    reply = (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text;
+                } else if(provider==='claude') {
+                    const res = await fetch("https://api.anthropic.com/v1/messages", {
+                        method: 'POST', headers: {'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','dangerously-allow-browser':'true'},
+                        body: JSON.stringify({ model: model, max_tokens: 4096, messages: history.filter(m=>m.role!=='system') })
+                    });
+                    if(!res.ok) throw new Error((await res.json()).error?.message||res.status);
+                    reply = (await res.json()).content[0].text;
+                } else {
+                    const ep = provider==='zhipu' ? "https://open.bigmodel.cn/api/paas/v4/chat/completions" : url;
+                    const res = await fetch(ep, {
+                        method: 'POST', headers: {'Content-Type':'application/json','Authorization':`Bearer ${key}`},
+                        body: JSON.stringify({ model: model, messages: history })
+                    });
+                    if(!res.ok) throw new Error((await res.json()).error?.message||res.status);
+                    reply = (await res.json()).choices[0].message.content;
+                }
+                if(!reply) throw new Error("無內容");
+                appendMessage('ai', reply, history.length);
+                history.push({ role: 'assistant', content: reply }); saveHistory();
+            } catch(e) { appendMessage('ai', `❌ 錯誤: ${e.message}`, -1); }
+            finally { document.getElementById('loading-indicator').style.display = 'none'; document.getElementById('send-btn').disabled = false; updateCostEstimate(); }
+        }
+
+        function appendMessage(role, text, idx) {
+            const div = document.createElement('div'); div.className = `message-container ${role}`;
+            const msg = document.createElement('div'); msg.className = `message ${role}`;
+            msg.innerHTML = (typeof marked !== 'undefined' && role!=='system') ? marked.parse(text) : text;
+            div.appendChild(msg);
+            if(role!=='system' && idx!==-1) {
+                const acts = document.createElement('div'); acts.className = 'msg-actions';
+                acts.innerHTML = `<button class="action-btn" onclick="saveToGh('${encodeURIComponent(text)}', 'msg')">📤 Save</button> <button class="action-btn btn-del-msg" onclick="delMsg(${idx})">🗑️ Del</button>`;
+                div.appendChild(acts);
+            }
+            chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function delMsg(i) { if(confirm("刪除此對話？")) { history.splice(i, 1); saveHistory(); reloadUI(); } }
+        function reloadUI() { chatBox.innerHTML=''; history.forEach((m,i)=>appendMessage(m.role, m.content, i)); updateCostEstimate(); }
+        
+        async function saveToGh(content, prefix) {
+            const token=localStorage.getItem('github_token'), user=localStorage.getItem('github_user'), repo=localStorage.getItem('github_repo');
+            if(!token||!user||!repo) return alert("請設定 GitHub");
+            const fname = prompt("檔名:", `${prefix}-${new Date().toISOString().slice(5,19).replace(/[:T]/g,'-')}.md`);
+            if(!fname) return;
+            try {
+                const res = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${fname}`, {
+                    method: 'PUT', headers: {'Authorization':`token ${token}`,'Content-Type':'application/json'},
+                    body: JSON.stringify({ message: `Add ${fname}`, content: btoa(unescape(decodeURIComponent(content))) })
+                });
+                if(res.ok) alert("✅ 儲存成功"); else alert("❌ 失敗");
+            } catch(e) { alert("❌ 錯誤"); }
+        }
+
+        async function saveAllToGitHub() {
+            if(!history.length) return alert("無內容");
+            let md = "# 對話紀錄\n\n";
+            history.forEach(m => md += `## ${m.role}\n${m.content}\n\n`);
+            saveToGh(encodeURIComponent(md), "full-chat");
+        }
+
+        // --- 檔案載入與其他 ---
+        function openSettings() { renderCustomModelList(); document.getElementById('settings-modal').style.display = 'flex'; }
+        function closeSettings() { document.getElementById('settings-modal').style.display = 'none'; }
+        function hardReset() { if(confirm("重置所有設定？")) { localStorage.clear(); location.reload(); } }
+        function loadChatHistory() { try{history=JSON.parse(localStorage.getItem('chat_history_v15')||'[]');reloadUI();}catch(e){history=[];} }
+        function saveHistory() { localStorage.setItem('chat_history_v15', JSON.stringify(history)); }
+        function clearHistory() { if(confirm("清空？")) { history=[]; saveHistory(); reloadUI(); } }
+        
+        // Custom Models
+        function getCus() { return JSON.parse(localStorage.getItem('custom_models')||'[]'); }
+        function addCustomModel() { const v=document.getElementById('new-custom-model').value.trim(); if(v) { let c=getCus(); if(!c.includes(v)) { c.push(v); localStorage.setItem('custom_models', JSON.stringify(c)); renderCustomModelList(); renderQuickMenu(); } } }
+        function renderCustomModelList() { 
+            const c=getCus(); const div=document.getElementById('custom-model-list-container'); div.innerHTML=''; 
+            c.forEach(id=>{ div.innerHTML += `<div class="custom-model-item"><span>${id}</span> <button class="btn-del-model" onclick="delCus('${id}')">🗑</button></div>`; });
+        }
+        function delCus(id) { let c=getCus().filter(x=>x!==id); localStorage.setItem('custom_models', JSON.stringify(c)); renderCustomModelList(); renderQuickMenu(); }
+
+        // File Browser (Simplified)
+        async function openFileBrowser() {
+             const token=localStorage.getItem('github_token'), user=localStorage.getItem('github_user'), repo=localStorage.getItem('github_repo');
+             if(!token) return alert("請設定 GitHub");
+             document.getElementById('file-modal').style.display='flex';
+             const list = document.getElementById('repo-file-list'); list.innerHTML='讀取中...';
+             try {
+                 const res = await fetch(`https://api.github.com/repos/${user}/${repo}/contents`, {headers:{'Authorization':`token ${token}`}});
+                 const files = (await res.json()).filter(f=>f.name.endsWith('.md')||f.name.endsWith('.txt'));
+                 list.innerHTML = '';
+                 files.forEach(f => {
+                     const d = document.createElement('div'); d.className='file-item';
+                     d.innerHTML=`<input type="checkbox" value="${f.path}" data-name="${f.name}"> ${f.name}`;
+                     d.onclick=(e)=>{if(e.target.tagName!=='INPUT')d.querySelector('input').click()};
+                     list.appendChild(d);
+                 });
+             } catch(e) { list.innerHTML='讀取失敗'; }
+        }
+        function closeFileBrowser() { document.getElementById('file-modal').style.display='none'; }
+        async function loadSelectedFiles() {
+            const chks = document.querySelectorAll('#repo-file-list input:checked');
+            if(!chks.length) return;
+            closeFileBrowser();
+            const token=localStorage.getItem('github_token'), user=localStorage.getItem('github_user'), repo=localStorage.getItem('github_repo');
+            let buf = "";
+            for(let c of chks) {
+                const res = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${c.value}`, {headers:{'Authorization':`token ${token}`}});
+                const raw = atob((await res.json()).content.replace(/\n/g,''));
+                const txt = new TextDecoder('utf-8').decode(new Uint8Array([...raw].map(c=>c.charCodeAt(0))));
+                buf += `\n\n--- [${c.dataset.name}] ---\n${txt}`;
+            }
+            if(buf) {
+                history.push({role:'user', content: `【載入背景資料】\n${buf}`});
+                history.push({role:'assistant', content: "已讀取資料。"});
+                saveHistory(); reloadUI();
+            }
+        }
+        async function checkGoogleModels() {
+             const key=document.getElementById('google-key-input').value; if(!key)return;
+             const div=document.getElementById('model-list-result'); div.style.display='block'; div.innerText='檢測中...';
+             try{ const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`); 
+             div.innerText = '可用: ' + (await res.json()).models.map(m=>m.name.replace('models/','')).join(', '); } catch(e){div.innerText='Error';}
+        }
+    </script>
+</body>
+</html>
